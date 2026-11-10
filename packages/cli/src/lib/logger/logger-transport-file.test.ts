@@ -112,3 +112,20 @@ it("should rethrow non-ENOENT errors while pruning", () => {
 
   unlinkSpy.mockRestore();
 });
+
+it("should prune the oldest log files, whatever their command prefix", () => {
+  vol.fromJSON({
+    "./stories-pull-1.jsonl": "{}",
+    "./stories-pull-2.jsonl": "{}",
+  });
+  nodeFs.utimesSync("./stories-pull-1.jsonl", new Date(1000), new Date(1000));
+  nodeFs.utimesSync("./stories-pull-2.jsonl", new Date(2000), new Date(2000));
+
+  new FileTransport({ filePath: "./schema-push-3.jsonl", maxFiles: 2 }).log({
+    level: "info",
+    message: "Log 3",
+  });
+
+  const remaining = Object.keys(vol.toJSON()).map((path) => path.split("/").pop());
+  expect(remaining.sort()).toEqual(["schema-push-3.jsonl", "stories-pull-2.jsonl"]);
+});

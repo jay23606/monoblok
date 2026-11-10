@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import { vol } from "memfs";
+import * as nodeFs from "node:fs";
 import { REPORT_STATUS, Reporter } from "./reporter";
 
 it("should compute status and write report when enabled", () => {
@@ -94,4 +95,18 @@ it("should not write a report when disabled", () => {
 
   const files = Object.keys(vol.toJSON());
   expect(files).toHaveLength(0);
+});
+
+it("should prune the oldest report files, whatever their command prefix", () => {
+  vol.fromJSON({
+    "./stories-pull-1.json": "{}",
+    "./stories-pull-2.json": "{}",
+  });
+  nodeFs.utimesSync("./stories-pull-1.json", new Date(1000), new Date(1000));
+  nodeFs.utimesSync("./stories-pull-2.json", new Date(2000), new Date(2000));
+
+  new Reporter({ enabled: true, filePath: "./schema-push-3.json", maxFiles: 2 }).finalize();
+
+  const remaining = Object.keys(vol.toJSON()).map((path) => path.split("/").pop());
+  expect(remaining.sort()).toEqual(["schema-push-3.json", "stories-pull-2.json"]);
 });

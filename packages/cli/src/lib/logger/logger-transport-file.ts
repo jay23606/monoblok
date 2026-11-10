@@ -1,5 +1,5 @@
 import type { LogContext, LogLevel, LogRecord, LogTransport } from "./logger";
-import { appendToFileSync } from "../../utils/filesystem";
+import { appendToFileSync, sortFilesOldestFirst } from "../../utils/filesystem";
 import { existsSync, readdirSync, unlinkSync } from "node:fs";
 import { dirname, extname, join } from "pathe";
 import { APIError } from "../../utils/error/api-error";
@@ -55,9 +55,10 @@ export class FileTransport implements LogTransport {
       return 0;
     }
 
-    const files = readdirSync(directory)
-      .filter((file) => extname(file) === extension)
-      .sort();
+    const files = sortFilesOldestFirst(
+      directory,
+      readdirSync(directory).filter((file) => extname(file) === extension),
+    );
 
     const filesToDelete = files.length - keep;
     if (filesToDelete <= 0) {
