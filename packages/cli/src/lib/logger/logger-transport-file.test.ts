@@ -113,19 +113,28 @@ it("should rethrow non-ENOENT errors while pruning", () => {
   unlinkSpy.mockRestore();
 });
 
-it("should prune the oldest log files, whatever their command prefix", () => {
+it("should prune the oldest runs, whatever their command prefix or file times", () => {
   vol.fromJSON({
-    "./stories-pull-1.jsonl": "{}",
-    "./stories-pull-2.jsonl": "{}",
+    "./stories-pull-1000.jsonl": "{}",
+    "./stories-pull-2000.jsonl": "{}",
   });
-  nodeFs.utimesSync("./stories-pull-1.jsonl", new Date(1000), new Date(1000));
-  nodeFs.utimesSync("./stories-pull-2.jsonl", new Date(2000), new Date(2000));
+  // File times can disagree with run order, e.g., after copying the folder.
+  nodeFs.utimesSync("./stories-pull-1000.jsonl", new Date(2000), new Date(2000));
+  nodeFs.utimesSync("./stories-pull-2000.jsonl", new Date(1000), new Date(1000));
 
-  new FileTransport({ filePath: "./schema-push-3.jsonl", maxFiles: 2 }).log({
+  new FileTransport({ filePath: "./schema-push-3000.jsonl", maxFiles: 2 }).log({
     level: "info",
     message: "Log 3",
   });
 
   const remaining = Object.keys(vol.toJSON()).map((path) => path.split("/").pop());
-  expect(remaining.sort()).toEqual(["schema-push-3.jsonl", "stories-pull-2.jsonl"]);
+  expect(remaining.sort()).toEqual(["schema-push-3000.jsonl", "stories-pull-2000.jsonl"]);
+});
+
+it("should skip directories while pruning", () => {
+  vol.fromJSON({ "./old-1000.jsonl/file": "", "./run-2000.jsonl": "{}" });
+
+  expect(FileTransport.pruneLogFiles(".", 0, ".jsonl")).toBe(1);
+  expect(nodeFs.existsSync("./old-1000.jsonl")).toBe(true);
+  expect(nodeFs.existsSync("./run-2000.jsonl")).toBe(false);
 });

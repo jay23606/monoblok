@@ -10,7 +10,7 @@ const pruneCmd = reportsCommand
   .description("Prune reports")
   .option(
     "--keep <number>",
-    "Max number of report files to keep (default `0`, meaning remove all)",
+    "Number of most recent report files to keep (default `0`, meaning remove all)",
     Number.parseInt,
     0,
   )

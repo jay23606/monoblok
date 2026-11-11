@@ -1,5 +1,4 @@
-import { saveToFileSync, sortFilesOldestFirst } from "../../utils/filesystem";
-import { existsSync, readdirSync, unlinkSync } from "node:fs";
+import { listRunFiles, pruneRunFiles, saveToFileSync } from "../../utils/filesystem";
 import { dirname, extname, join, relative } from "pathe";
 
 export const REPORT_STATUS = {
@@ -112,36 +111,13 @@ export class Reporter {
   }
 
   public static pruneReportFiles(directory: string, keep: number, extension = ".json") {
-    if (!existsSync(directory)) {
-      return 0;
-    }
-
-    const files = sortFilesOldestFirst(
-      directory,
-      readdirSync(directory).filter((file) => extname(file) === extension),
-    );
-
-    const filesToDelete = files.length - keep;
-    if (filesToDelete <= 0) {
-      return 0;
-    }
-
-    for (const file of files.slice(0, filesToDelete)) {
-      unlinkSync(join(directory, file));
-    }
-
-    return filesToDelete;
+    return pruneRunFiles(directory, extension, keep);
   }
 
   public static listReportFiles(directory: string, extension = ".json") {
-    if (!existsSync(directory)) {
-      return [];
-    }
-
-    return readdirSync(directory)
-      .filter((file) => extname(file) === extension)
-      .map((f) => relative(process.cwd(), join(directory, f)))
-      .sort();
+    return listRunFiles(directory, extension).map((file) =>
+      relative(process.cwd(), join(directory, file)),
+    );
   }
 }
 

@@ -97,16 +97,23 @@ it("should not write a report when disabled", () => {
   expect(files).toHaveLength(0);
 });
 
-it("should prune the oldest report files, whatever their command prefix", () => {
+it("should prune the oldest runs, whatever their command prefix or file times", () => {
   vol.fromJSON({
-    "./stories-pull-1.json": "{}",
-    "./stories-pull-2.json": "{}",
+    "./stories-pull-1000.json": "{}",
+    "./stories-pull-2000.json": "{}",
   });
-  nodeFs.utimesSync("./stories-pull-1.json", new Date(1000), new Date(1000));
-  nodeFs.utimesSync("./stories-pull-2.json", new Date(2000), new Date(2000));
+  // File times can disagree with run order, e.g., after copying the folder.
+  nodeFs.utimesSync("./stories-pull-1000.json", new Date(2000), new Date(2000));
+  nodeFs.utimesSync("./stories-pull-2000.json", new Date(1000), new Date(1000));
 
-  new Reporter({ enabled: true, filePath: "./schema-push-3.json", maxFiles: 2 }).finalize();
+  new Reporter({ enabled: true, filePath: "./schema-push-3000.json", maxFiles: 2 }).finalize();
 
   const remaining = Object.keys(vol.toJSON()).map((path) => path.split("/").pop());
-  expect(remaining.sort()).toEqual(["schema-push-3.json", "stories-pull-2.json"]);
+  expect(remaining.sort()).toEqual(["schema-push-3000.json", "stories-pull-2000.json"]);
+});
+
+it("should count only existing files when keep is negative", () => {
+  vol.fromJSON({ "./a-1000.json": "{}", "./b-2000.json": "{}" });
+
+  expect(Reporter.pruneReportFiles(".", -1)).toBe(2);
 });

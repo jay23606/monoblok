@@ -1,4 +1,4 @@
-import { join, parse, resolve } from "pathe";
+import { extname, join, parse, resolve } from "pathe";
 import { pathToFileURL } from "node:url";
 import {
   access,
@@ -12,28 +12,59 @@ import {
 import { handleFileSystemError } from "./error/filesystem-error";
 import type { FileReaderResult } from "../types";
 import filenamify from "filenamify";
-import { appendFileSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { toError } from "./error";
 
+// Log and report files are named `<command>-<runId>`, where the run ID is the
+// run's start time in milliseconds.
+const RUN_ID_PATTERN = /(?:^|-)(\d+)$/;
+const NO_RUN_ID = -1;
+
+function getRunId(file: string): number {
+  const match = RUN_ID_PATTERN.exec(parse(file).name);
+  return match ? Number(match[1]) : NO_RUN_ID;
+}
+
 /**
- * Sorts file names in `directory` from oldest to newest modification time.
- * Names alone don't order by age: run files are prefixed with their command.
- * A file removed concurrently is dropped from the result.
+ * Lists the log or report file names in `directory`, oldest run first.
+ * Files without a run ID sort first.
  */
-export function sortFilesOldestFirst(directory: string, files: string[]): string[] {
-  const dated: { file: string; modifiedAt: number }[] = [];
-  for (const file of files) {
+export function listRunFiles(directory: string, extension: string): string[] {
+  if (!existsSync(directory)) {
+    return [];
+  }
+
+  return readdirSync(directory, { withFileTypes: true })
+    .filter((entry) => !entry.isDirectory() && extname(entry.name) === extension)
+    .map((entry) => entry.name)
+    .sort((a, b) => getRunId(a) - getRunId(b) || a.localeCompare(b));
+}
+
+/** Deletes all but the `keep` newest runs and returns the number of deleted files. */
+export function pruneRunFiles(directory: string, extension: string, keep: number): number {
+  const files = listRunFiles(directory, extension);
+  const filesToDelete = files.slice(0, Math.max(0, files.length - keep));
+
+  for (const file of filesToDelete) {
     try {
-      dated.push({ file, modifiedAt: statSync(join(directory, file)).mtimeMs });
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      unlinkSync(join(directory, file));
+    } catch (maybeError) {
+      const error = toError(maybeError);
+      // A concurrent CLI run pruning the same directory may delete the file first.
+      if (!("code" in error && error.code === "ENOENT")) {
         throw error;
       }
     }
   }
-  return dated
-    .sort((a, b) => a.modifiedAt - b.modifiedAt || (a.file < b.file ? -1 : a.file > b.file ? 1 : 0))
-    .map(({ file }) => file);
+
+  return filesToDelete.length;
 }
 
 // Default working folder for commands that do not pass --path explicitly.

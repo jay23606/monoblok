@@ -1,6 +1,5 @@
 import type { LogContext, LogLevel, LogRecord, LogTransport } from "./logger";
-import { appendToFileSync, sortFilesOldestFirst } from "../../utils/filesystem";
-import { existsSync, readdirSync, unlinkSync } from "node:fs";
+import { appendToFileSync, listRunFiles, pruneRunFiles } from "../../utils/filesystem";
 import { dirname, extname, join } from "pathe";
 import { APIError } from "../../utils/error/api-error";
 
@@ -51,49 +50,13 @@ export class FileTransport implements LogTransport {
   }
 
   public static pruneLogFiles(directory: string, keep: number, extension = ".jsonl") {
-    if (!existsSync(directory)) {
-      return 0;
-    }
-
-    const files = sortFilesOldestFirst(
-      directory,
-      readdirSync(directory).filter((file) => extname(file) === extension),
-    );
-
-    const filesToDelete = files.length - keep;
-    if (filesToDelete <= 0) {
-      return 0;
-    }
-
-    let deleted = 0;
-    for (const file of files.slice(0, filesToDelete)) {
-      try {
-        unlinkSync(join(directory, file));
-      } catch (error) {
-        // `readdirSync` and `unlinkSync` are not atomic, so a concurrent CLI
-        // process logging to the same directory may prune the same file first.
-        // The file is already gone, which is the desired outcome, so ignore it
-        // rather than letting best-effort log rotation crash the command.
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-          throw error;
-        }
-      }
-      deleted += 1;
-    }
-
-    return deleted;
+    return pruneRunFiles(directory, extension, keep);
   }
 
   public static listLogFiles(directory: string, extension = ".jsonl") {
-    if (!existsSync(directory)) {
-      return [];
-    }
-
-    const files = readdirSync(directory)
-      .filter((file) => extname(file) === extension)
-      .sort();
-
-    return files.map((f) => join(directory, f).replace(process.cwd(), "."));
+    return listRunFiles(directory, extension).map((file) =>
+      join(directory, file).replace(process.cwd(), "."),
+    );
   }
 
   private levelRank(level: LogLevel): number {
