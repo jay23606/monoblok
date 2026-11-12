@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 import { vol } from "memfs";
 import * as nodeFs from "node:fs";
 import { REPORT_STATUS, Reporter } from "./reporter";
+import { getRunFileName } from "../../utils/filesystem";
 
 it("should compute status and write report when enabled", () => {
   const reporterSuccess = new Reporter({ enabled: true, filePath: "./success.json" });
@@ -98,21 +99,38 @@ it("should not write a report when disabled", () => {
 });
 
 it("should prune the oldest runs, whatever their command prefix or file times", () => {
-  vol.fromJSON({
-    "./stories-pull-1000.json": "{}",
-    "./stories-pull-2000.json": "{}",
-  });
-  // File times can disagree with run order, e.g., after copying the folder.
-  nodeFs.utimesSync("./stories-pull-1000.json", new Date(2000), new Date(2000));
-  nodeFs.utimesSync("./stories-pull-2000.json", new Date(1000), new Date(1000));
+  const oldestRun = getRunFileName(["storyblok", "stories", "pull"], 1000, ".json");
+  const olderRun = getRunFileName(["storyblok", "stories", "pull"], 2000, ".json");
+  const newestRun = getRunFileName(["storyblok", "schema", "push"], 3000, ".json");
+  vol.fromJSON({ [oldestRun]: "{}", [olderRun]: "{}" });
+  nodeFs.utimesSync(oldestRun, new Date(2000), new Date(2000));
+  nodeFs.utimesSync(olderRun, new Date(1000), new Date(1000));
 
-  new Reporter({ enabled: true, filePath: "./schema-push-3000.json", maxFiles: 2 }).finalize();
+  new Reporter({ enabled: true, filePath: newestRun, maxFiles: 2 }).finalize();
 
-  const remaining = Object.keys(vol.toJSON()).map((path) => path.split("/").pop());
-  expect(remaining.sort()).toEqual(["schema-push-3000.json", "stories-pull-2000.json"]);
+  expect(Reporter.listReportFiles(".")).toEqual([olderRun, newestRun]);
 });
 
-it("should count only existing files when keep is negative", () => {
+it("should keep its own report when runs that started later already finished", () => {
+  vol.fromJSON({ "./stories-pull-2000.json": "{}", "./stories-pull-3000.json": "{}" });
+
+  new Reporter({ enabled: true, filePath: "./migrations-run-1000.json", maxFiles: 2 }).finalize();
+
+  expect(Reporter.listReportFiles(".")).toEqual([
+    "migrations-run-1000.json",
+    "stories-pull-3000.json",
+  ]);
+});
+
+it("should ignore files without a run ID", () => {
+  vol.fromJSON({ "./notes.json": "{}", "./stories-pull-1000.json": "{}" });
+
+  expect(Reporter.listReportFiles(".")).toEqual(["stories-pull-1000.json"]);
+  expect(Reporter.pruneReportFiles(".", 0)).toBe(1);
+  expect(nodeFs.existsSync("./notes.json")).toBe(true);
+});
+
+it("should return the number of deleted files when keep is negative", () => {
   vol.fromJSON({ "./a-1000.json": "{}", "./b-2000.json": "{}" });
 
   expect(Reporter.pruneReportFiles(".", -1)).toBe(2);

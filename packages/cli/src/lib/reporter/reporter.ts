@@ -1,5 +1,5 @@
 import { listRunFiles, pruneRunFiles, saveToFileSync } from "../../utils/filesystem";
-import { dirname, extname, join, relative } from "pathe";
+import { basename, dirname, extname, join, relative } from "pathe";
 
 export const REPORT_STATUS = {
   unfinished: "UNFINISHED",
@@ -104,10 +104,12 @@ export class Reporter {
       return;
     }
 
-    const dir = dirname(this.filePath);
-    const ext = extname(this.filePath);
-
-    Reporter.pruneReportFiles(dir, this.maxFiles, ext);
+    pruneRunFiles(
+      dirname(this.filePath),
+      extname(this.filePath),
+      this.maxFiles,
+      basename(this.filePath),
+    );
   }
 
   public static pruneReportFiles(directory: string, keep: number, extension = ".json") {

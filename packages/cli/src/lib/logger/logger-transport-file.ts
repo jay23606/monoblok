@@ -1,6 +1,6 @@
 import type { LogContext, LogLevel, LogRecord, LogTransport } from "./logger";
 import { appendToFileSync, listRunFiles, pruneRunFiles } from "../../utils/filesystem";
-import { dirname, extname, join } from "pathe";
+import { basename, dirname, extname, join } from "pathe";
 import { APIError } from "../../utils/error/api-error";
 
 export interface FileTransportOptions {
@@ -43,10 +43,12 @@ export class FileTransport implements LogTransport {
       return;
     }
 
-    const dir = dirname(this.filePath);
-    const ext = extname(this.filePath);
-
-    FileTransport.pruneLogFiles(dir, this.maxFiles, ext);
+    pruneRunFiles(
+      dirname(this.filePath),
+      extname(this.filePath),
+      this.maxFiles,
+      basename(this.filePath),
+    );
   }
 
   public static pruneLogFiles(directory: string, keep: number, extension = ".jsonl") {

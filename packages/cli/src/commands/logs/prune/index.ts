@@ -10,7 +10,7 @@ const pruneCmd = logsCommand
   .description("Prune logs")
   .option(
     "--keep <number>",
-    "Number of most recent log files to keep (default `0`, meaning remove all)",
+    "Number of most recent log files to keep (0 removes all)",
     Number.parseInt,
     0,
   )

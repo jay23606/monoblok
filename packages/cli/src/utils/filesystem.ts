@@ -22,19 +22,32 @@ import {
 } from "node:fs";
 import { toError } from "./error";
 
-// Log and report files are named `<command>-<runId>`, where the run ID is the
-// run's start time in milliseconds.
-const RUN_ID_PATTERN = /(?:^|-)(\d+)$/;
-const NO_RUN_ID = -1;
+/**
+ * Builds the name of a log or report file. `runId` is the run's start time in
+ * milliseconds, which orders the files for listing and pruning.
+ */
+export function getRunFileName(commandPieces: string[], runId: number, extension: string): string {
+  return `${commandPieces.join("-")}-${runId}${extension}`;
+}
 
-function getRunId(file: string): number {
+// Also matches a bare run ID, the default file name of the reporter and the log file transport.
+const RUN_ID_PATTERN = /(?:^|-)(\d+)$/;
+
+function getRunId(file: string): number | undefined {
   const match = RUN_ID_PATTERN.exec(parse(file).name);
-  return match ? Number(match[1]) : NO_RUN_ID;
+  return match ? Number(match[1]) : undefined;
+}
+
+function compareCodeUnits(a: string, b: string): number {
+  if (a === b) {
+    return 0;
+  }
+  return a < b ? -1 : 1;
 }
 
 /**
- * Lists the log or report file names in `directory`, oldest run first.
- * Files without a run ID sort first.
+ * Lists the log or report file names in `directory`, oldest run first. Ignores
+ * files without a run ID.
  */
 export function listRunFiles(directory: string, extension: string): string[] {
   if (!existsSync(directory)) {
@@ -43,14 +56,29 @@ export function listRunFiles(directory: string, extension: string): string[] {
 
   return readdirSync(directory, { withFileTypes: true })
     .filter((entry) => !entry.isDirectory() && extname(entry.name) === extension)
-    .map((entry) => entry.name)
-    .sort((a, b) => getRunId(a) - getRunId(b) || a.localeCompare(b));
+    .flatMap((entry) => {
+      const runId = getRunId(entry.name);
+      return runId === undefined ? [] : [{ name: entry.name, runId }];
+    })
+    .sort((a, b) => a.runId - b.runId || compareCodeUnits(a.name, b.name))
+    .map((file) => file.name);
 }
 
-/** Deletes all but the `keep` newest runs and returns the number of deleted files. */
-export function pruneRunFiles(directory: string, extension: string, keep: number): number {
+/**
+ * Deletes all but the `keep` newest files and returns how many it deleted.
+ * Never deletes `currentFile`, even when runs that started later already
+ * finished.
+ */
+export function pruneRunFiles(
+  directory: string,
+  extension: string,
+  keep: number,
+  currentFile?: string,
+): number {
   const files = listRunFiles(directory, extension);
-  const filesToDelete = files.slice(0, Math.max(0, files.length - keep));
+  const filesToDelete = files
+    .filter((file) => file !== currentFile)
+    .slice(0, Math.max(0, files.length - keep));
 
   for (const file of filesToDelete) {
     try {
